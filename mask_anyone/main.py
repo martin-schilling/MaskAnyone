@@ -2,8 +2,13 @@ import argparse
 import os
 
 # Remove Persons from Video (Person detection (bbox or silhouette), Background estimation)
-def remove_persons(video_in_path, output_path) -> None:
-    pass
+def remove_persons(video_in_path, output_path, detection_method="bbox", inpaint_method="e2fgvi") -> None:
+    if detection_method == "bbox":
+        pass
+    elif detection_method == "silhouette":
+        pass
+    else:
+        raise Exception("Invalid method for person removal given")
 
 # Extract Person Poses (3D Pose Estimation)
 def extract_poses(video_in_path):
@@ -27,7 +32,7 @@ if __name__ == '__main__':
 
     anonymized_video_path = os.path.join("data", "temp", os.path.basename(video_path))
     result_output_path = os.path.join("data", "output", os.path.basename(video_path))
-    remove_persons(video_path, anonymized_video_path)
+    remove_persons(video_path, anonymized_video_path, "bbox", "e2fgvi")
     poses = extract_poses(video_path)
     animated_character = animate(poses, rigfile)
     combine(animated_character, anonymized_video_path, result_output_path)
