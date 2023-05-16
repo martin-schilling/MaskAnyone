@@ -1,0 +1,9 @@
+[submodule "mask_anyone/person_removal/E2FGVI"]
+	path = mask_anyone/person_removal/E2FGVI
+	url = https://github.com/MCG-NKU/E2FGVI.git
+[submodule "mask_anyone/ultralytics"]
+	path = mask_anyone/ultralytics
+	url = git@github.com:ultralytics/ultralytics.git
+[submodule "mask_anyone/--force"]
+	path = mask_anyone/--force
+	url = git@github.com:fenglinglwb/MAT.git
