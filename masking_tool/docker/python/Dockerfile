@@ -49,3 +49,5 @@ RUN pip install \
     packaging \
     scikit-learn==0.24.2 \
     wldhx.yadisk-direct
+
+#docker-compose run --rm python /bin/bash -c "cd /Inpaint-Anything && python remove_anything.py     --input_img ./example/remove-anything/dog.jpg     --coords_type key_in     --point_coords 200 450     --point_labels 1     --dilate_kernel_size 15     --output_dir ./results     --sam_model_type "vit_h"     --sam_ckpt /app/models/sam_vit_h_4b8939.pth     --lama_config ./lama/configs/prediction/default.yaml     --lama_ckpt /app/models/big-lama"
