@@ -6,6 +6,7 @@ import cv2
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
 from config import RESULT_BASE_PATH, VIDEOS_BASE_PATH
+from blendshapes import extract_blendshapes
 from utils.request_utils import range_requests_response
 from utils.app_utils import clear_temp_dir, init_directories
 
@@ -82,6 +83,10 @@ def get_result_preview_for_video(original_video_name: str, result_video_name: st
     with open(image_path, 'rb') as f:
         base64image = base64.b64encode(f.read())
     return {"image": base64image}
+
+@app.get('/blendshapes/{video_name}')
+def get_blendshapes(video_name: str):
+    return extract_blendshapes(video_name)
 
 @app.post("/run")
 def run(run_params: RunParams):

@@ -26,7 +26,7 @@ const VideosPage = () => {
     }, []);
 
     return (
-        <Box>
+        <Box component="div">
             {videoName && (<VideoRunParams videoName={videoName} />)}
             <Divider style={{marginBottom: "15px"}}/>
             {videoName && (<DoubleVideo videoName={videoName} selectedResult={selectedResult}/>)}

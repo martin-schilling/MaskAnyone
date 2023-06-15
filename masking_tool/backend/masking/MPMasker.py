@@ -13,7 +13,6 @@ class MPMasker(BaseMasker):
 
     def mask_face(self):
         face_landmarker_results = self.face_landmarker.detect_for_video(self.cur_mp_image, self.frame_timestamp_ms)
-        print(face_landmarker_results)
         return face_landmarker_results
 
     def mask_body(self):
@@ -22,7 +21,6 @@ class MPMasker(BaseMasker):
 
     def mask_fingers(self):
         hand_landmarker_result = self.hand_landmarker.detect_for_video(self.cur_mp_image, self.frame_timestamp_ms)
-        print(hand_landmarker_result)
         return hand_landmarker_result
 
     def setup_masking_utilities(self):

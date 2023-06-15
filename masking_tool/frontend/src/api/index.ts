@@ -35,6 +35,15 @@ const Api = {
         })
         return result.data.image
     },
+    getBlendshapes: async (
+        videoName: string
+    ): Promise<any[]> => {
+        const result = await sendApiRequest({
+            url: `blendshapes/${videoName}`,
+            method: 'get'
+        })
+        return result.data
+    },
     maskVideo: async (
         videoName: string,
         extractPersonOnly: boolean,

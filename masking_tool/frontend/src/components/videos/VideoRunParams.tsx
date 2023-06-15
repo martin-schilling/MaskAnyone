@@ -42,7 +42,7 @@ const VideoRunParams = (props: VideoRunParamsProps) => {
     };
 
     return (
-        <Box sx={{ marginBottom: 2 }}>
+        <Box component="div" sx={{ marginBottom: 2 }}>
             <Grid container spacing={2}>
                 <Grid item xs={6} style={{padding: "15px"}}>
                     <h4>1. Person Removal Options</h4>

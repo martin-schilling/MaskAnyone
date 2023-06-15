@@ -40,7 +40,7 @@ const SideBar = (props: SideBarProps) => {
             onClose={props.onClose}
             variant={props.isLargeScreen ? 'persistent' : 'temporary'}
             children={(
-                <Box sx={styles.container}>
+                <Box component="div" sx={styles.container}>
                     {videoList.map(video => (
                         <SideBarItem
                             key={video.name}

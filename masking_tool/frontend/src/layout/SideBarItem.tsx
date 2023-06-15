@@ -46,13 +46,13 @@ const SideBarItem = (props: SideBarItemProps) => {
     const location = useLocation();
 
     return (
-        <Box>
+        <Box component="div">
             <ListItem disableGutters={true} sx={styles.item}>
                 <Button
                     sx={styles.button}
                     className={location.pathname.startsWith(props.url) ? 'active' : ''}
                     children={(<>
-                        <Box sx={styles.icon}>{props.icon}</Box>
+                        <Box component="div" sx={styles.icon}>{props.icon}</Box>
                         {props.label}
                     </>)}
                     component={Link}

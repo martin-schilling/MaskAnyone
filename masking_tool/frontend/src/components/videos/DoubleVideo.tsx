@@ -41,7 +41,7 @@ const DoubleVideo = (props: DoubleVideoProps) => {
     }, []);
 
     return (
-        <Box>
+        <Box component="div">
             <video controls={true} key={originalPath} style={{ width: '49%' }} ref={video1Ref}>
                 <source src={originalPath} type={'video/mp4'} key={originalPath} />
             </video>
