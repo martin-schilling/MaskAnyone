@@ -24,7 +24,8 @@ import { useGLTF, useAnimations } from '@react-three/drei'
 import { GLTF } from 'three-stdlib'
 import { AnimationAction } from 'three';
 import Api from '../../api';
-import initalblendshapes from "./blendshapes.json"
+//import initalblendshapes from "./blendshapes.json"
+const initalblendshapes = null
 
 interface Blendshapes {
   [name: string]: number;

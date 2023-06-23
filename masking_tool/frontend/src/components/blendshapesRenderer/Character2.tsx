@@ -25,7 +25,9 @@ import { useFrame, useGraph } from '@react-three/fiber';
 import { GLTF } from 'three-stdlib'
 import { AnimationAction } from 'three';
 import Api from '../../api';
-import initalblendshapes from "./blendshapes.json"
+import * as Kalidokit from 'kalidokit';
+import initialFaceResults from "./faceResults3.json"
+import initialPoseResults from "./poseResults.json"
 
 interface Blendshapes {
   [name: string]: number;
@@ -51,38 +53,143 @@ type GLTFResult = GLTF & {
 }
 type ActionName = 'Expression' | 'KeyAction' | 'HeadMovement' | 'BodyAction'
 type GLTFActions = Record<ActionName, THREE.AnimationAction>
-function updateBlendshapes(node: any, blendshapes: any) {
-  if (!node.morphTargetDictionary) {
+function updateBlendshapes(headMesh: any, nodes: any, blendshapes: any, transformationMatrix: any) {
+  if (!headMesh.morphTargetDictionary) {
     return;
   }
-  if (!node.morphTargetInfluences) {
+  if (!headMesh.morphTargetInfluences) {
     return;
   }
   let found = 0
   for (const name in blendshapes) {
     const value = blendshapes[name];
-    if (!Object.keys(node.morphTargetDictionary).includes(name)) {
+    if (!Object.keys(headMesh.morphTargetDictionary).includes(name)) {
       continue;
     }
     found = found + 1
-    const idx = node.morphTargetDictionary[name];
-    node.morphTargetInfluences[idx] = value;
+    const idx = headMesh.morphTargetDictionary[name];
+    headMesh.morphTargetInfluences[idx] = value;
   }
-} 
+
+  if(transformationMatrix.length){
+    const matrix = new THREE.Matrix4().fromArray(transformationMatrix);
+    const rotation = new THREE.Euler().setFromRotationMatrix(matrix);
+    nodes.Head.rotation.set(rotation.x, rotation.y, rotation.z);
+    nodes.Neck.rotation.set(rotation.x / 5 + 0.3, rotation.y / 5, rotation.z / 5);
+    nodes.Spine2.rotation.set(rotation.x / 10, rotation.y / 10, rotation.z / 10);
+  }
+}
+
+function updatePose(poseResult: any, poseWorldResults: any, bones: any) {
+  console.log(bones)
+  let  boneRotations: any = Kalidokit.Pose.solve(poseWorldResults, poseResult,{runtime:'mediapipe', imageSize: {width: 316, height: 308}})
+  console.log(boneRotations)
+  rotateBone(bones["Hips"], boneRotations["Hips"].rotation, 0.7)
+  updateBonePosition(bones["Hips"], {
+    x: -boneRotations.Hips.position.x, // Reverse direction
+    y:  boneRotations.Hips.position.y + 1, // Add a bit of height
+    z: -boneRotations.Hips.position.z // Reverse direction
+  })
+  rotateBone(bones["Chest"], boneRotations["Spine"], 0.25)
+  rotateBone(bones["Spine"], boneRotations["Spine"], 0.45)
+  rotateBone(bones["RightUpperArm"], boneRotations["RightUpperArm"])
+  rotateBone(bones["RightLowerArm"], boneRotations["RightLowerArm"])
+  rotateBone(bones["RightHand"], boneRotations["RightHand"])
+  rotateBone(bones["LeftUpperArm"], boneRotations["LeftUpperArm"])
+  rotateBone(bones["LeftLowerArm"], boneRotations["LeftLowerArm"])
+  rotateBone(bones["LeftHand"], boneRotations["LeftHand"])
+}
+
+function rotateBone(bone: any, rotation: any, dampener?: number, lerp?: number) {
+    dampener = dampener || 1
+    lerp = lerp || 0.3 // linear interpolation amount 
+    console.log(bone)
+    console.log(rotation)
+    let euler = new THREE.Euler(rotation.x * dampener, rotation.y * dampener, rotation.z * dampener, rotation.rotationOrder || "XYZ")
+    console.log(euler)
+    let quaternion = new THREE.Quaternion().setFromEuler(euler)
+    console.log(quaternion)
+    bone.quaternion.slerp(quaternion, lerp) // interpolate
+}
+
+function updateBonePosition(bone: any, position: any) {
+  const dampener = 1
+  const lerpAmount = 0.07
+
+  let vector = new THREE.Vector3(position.x * dampener, position.y * dampener, position.z * dampener)
+  bone.position.lerp(vector, lerpAmount) // interpolate)
+}
 
 export function Character(props: JSX.IntrinsicElements['group']) {
-  const [blendshapes, setBlendshapes] = useState<any>(initalblendshapes)
+  const [faceResults, setFaceResults] = useState<any>(initialFaceResults)
+  const [poseResults, setPoseResults] = useState<any>(initialPoseResults)
   const [frameIndex, setFrameIndex] = useState(0)
-  const { scene } = useGLTF("https://models.readyplayer.me/6460d95f9ae10f45bffb2864.glb?morphTargets=ARKit&textureAtlas=1024")
+  const { scene } = useGLTF("https://models.readyplayer.me/648acfafc91663ff974a4ff2.glb?morphTargets=ARKit")
   const { nodes } = useGraph(scene);
+  const [bones, setBones] = useState<any>([])
+
 
   const headMesh: any = (nodes.Wolf3D_Head || nodes.Wolf3D_Avatar || nodes.Wolf3D_Head_Custom);
   let count = 0
 
+  useEffect(() => {
+    scene.traverse((descendant) => {
+      switch(descendant.name) {
+        case "Hips":
+          bones['Hips'] = descendant
+          break
+        case "Spine1":
+          bones['Chest'] = descendant
+          break
+        case "LeftHand":
+          bones['RightHand'] = descendant
+          break
+        case "LeftForeArm":
+          bones["RightLowerArm"] = descendant
+          break
+        case "LeftArm":
+          bones["RightUpperArm"] = descendant
+          break
+        case "LeftUpLeg":
+          bones["RightUpperLeg"] = descendant
+          break
+        case "LeftLeg":
+          bones["RightLowerLeg"] = descendant
+          break
+        case "RightHand":
+          bones['LeftHand'] = descendant
+          break
+        case "RightForeArm":
+          bones["LeftLowerArm"] = descendant
+          break
+        case "RightArm":
+          bones["LeftUpperArm"] = descendant
+          break
+        case "RightUpLeg":
+          bones["LeftUpperLeg"] = descendant
+          break
+        case "RightLeg":
+          bones["LeftLowerLeg"] = descendant
+          break
+        case "Spine":
+          bones["Spine"] = descendant
+          break
+        case "LeftShoulder":
+          bones["LeftShoulder"] = descendant
+          break
+        case "RightShoulder":
+          bones["RightShoulder"] = descendant
+      }
+    })
+  }, [])
+
  useEffect(()=>{
     setInterval(() => {
-        console.log(count)
-      updateBlendshapes(headMesh, blendshapes[count]);
+      if(count >= faceResults.blendshapes.length - 1){
+        count = 0
+      }
+      updateBlendshapes(headMesh, nodes, faceResults.blendshapes[count], faceResults.transformationMatrices[count]);
+      updatePose(poseResults.pose[count], poseResults.poseWorld[count], bones)
       count = count + 1
     }, 50);
   }, [nodes]);
