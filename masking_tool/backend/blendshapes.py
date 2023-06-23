@@ -1,6 +1,7 @@
 import os
 import mediapipe as mp
 import cv2
+import json
 
 def extract_blendshapes(video_name):
     model_path = os.path.join("models", "face_landmarker.task")
@@ -19,11 +20,11 @@ def extract_blendshapes(video_name):
         num_faces=1)
     
     blendshapes = []
+    transformation_matrices = []
 
     with FaceLandmarker.create_from_options(options) as landmarker:
         capture = cv2.VideoCapture(video_path)
         samplerate = capture.get(cv2.CAP_PROP_FPS)
-        print("aaaaaaaaaa", samplerate)
 
         first = True
         while capture.isOpened():
@@ -43,9 +44,11 @@ def extract_blendshapes(video_name):
                     # Currently only working for one face, since all other faces are not added
                     processed_landmarkers = {entry.category_name: entry.score for entry in face_landmarker_result.face_blendshapes[0]}
                     blendshapes.append(processed_landmarkers)
+                    transformation_matrices.append(face_landmarker_result.facial_transformation_matrixes[0].flatten("F").tolist())
                 else:
                     print("no face detected, using last result for consistency")
                     blendshapes.append(blendshapes[len(blendshapes)-1])
+                    transformation_matrices.append([])
 
                 first = False
                 if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -54,4 +57,8 @@ def extract_blendshapes(video_name):
                 break
 
         capture.release()
-    return blendshapes
+        res = {"blendshapes": blendshapes, "transformationMatrices": transformation_matrices}
+        with open("faceResults2.json", "w") as fp:
+            json_string = json.dumps(res) 
+            fp.write(json_string)
+    return {"blendshapes": blendshapes, "transformationMatrices": transformation_matrices}

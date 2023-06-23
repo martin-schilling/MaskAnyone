@@ -1,6 +1,7 @@
 import os
 
 import cv2
+import json
 
 from config import RESULT_BASE_PATH
 
@@ -47,6 +48,7 @@ class BaseMasker():
         frameWidth = capture.get(cv2.CAP_PROP_FRAME_WIDTH)
         frameHeight = capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
         samplerate = capture.get(cv2.CAP_PROP_FPS)
+        print(frameWidth, frameHeight)
         
 
         if int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) != int(capture_bg.get(cv2.CAP_PROP_FRAME_COUNT)):
@@ -63,6 +65,8 @@ class BaseMasker():
         out = cv2.VideoWriter(self.output_path, fourcc, fps = samplerate, frameSize = (int(frameWidth), int(frameHeight)))
 
         self.setup_masking_utilities()
+        pose_results = []
+        pose_world_results = []
 
         first = True
         while capture.isOpened():
@@ -84,6 +88,14 @@ class BaseMasker():
                 body_res = self.mask_body() if body else None
                 fingers_res = self.mask_fingers() if fingers else None
 
+                if body_res:
+                    processed_res = [{"x": res.x, "y": res.y, "z": res.z, "score": res.presence, "visibility": res.visibility} for res in body_res.pose_landmarks[0]]
+                    processed_res_world = [{"x": res.x, "y": res.y, "z": res.z, "score": res.presence, "visibility": res.visibility} for res in body_res.pose_world_landmarks[0]]
+                    pose_results.append(processed_res)
+                    pose_world_results.append(processed_res_world)
+                else:
+                    pose_results.append([])
+                    pose_world_results.append([])
                 out_frame = self.draw_mask(face_res, body_res, fingers_res)
 
                 out.write(out_frame)
@@ -92,6 +104,11 @@ class BaseMasker():
                     break
             else:
                 break
+
+        with open("poseResults.json", "w") as fp:
+            res = {"pose": pose_results, "poseWorld": pose_world_results}
+            json_string = json.dumps(res) 
+            fp.write(json_string)
 
         out.release()
         capture.release()

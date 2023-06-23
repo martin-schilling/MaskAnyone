@@ -84,6 +84,7 @@ def get_result_preview_for_video(original_video_name: str, result_video_name: st
         base64image = base64.b64encode(f.read())
     return {"image": base64image}
 
+"""Returns blendshapes and transformation matrices for every frame of video in form {"blendshapes" [], "transformationMatrices": []}"""
 @app.get('/blendshapes/{video_name}')
 def get_blendshapes(video_name: str):
     return extract_blendshapes(video_name)

@@ -41,7 +41,7 @@ class MPMasker(BaseMasker):
             base_options=BaseOptions(model_asset_path=pose_model_path),
             running_mode=VisionRunningMode.VIDEO,
             output_segmentation_masks=True,
-            num_poses=2)
+            num_poses=1)
         
         hand_options = HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=hand_model_path),
