@@ -1,5 +1,5 @@
 import { HidingMethods, MaskingMethods } from "../state/types/RunParamRendering";
-import { blackoutFormSchemaBG, blackoutFormSchemaSubject, blackoutFormSchemaSubjectUI, blurFormSchemaBG, blurFormSchemaSubject, blurFormSchemaSubjectUI, bodyMeshFormSchema, faceMeshFormSchema, skeletonFormSchema } from "./formSchemas";
+import { blackoutFormSchemaBG, blackoutFormSchemaSubjectBBox, blackoutFormSchemaSubjectSilhouette, blackoutFormSchemaSubjectUI, blurFormSchemaBG, blurFormSchemaSubjectBBox, blurFormSchemaSubjectSilhouette, blurFormSchemaSubjectUI, bodyMeshFormSchema, faceMeshFormSchema, skeletonFormSchema } from "./formSchemas";
 
 export const maskingMethods: MaskingMethods = {
     none: {
@@ -47,10 +47,10 @@ export const hidingMethods: HidingMethods = {
             name: "None",
             description: "Does not hide the subject in the video"
         },
-        blur: {
-            name: "Blur",
+        blurBBox: {
+            name: "Blur Boundingbox",
             description: "Gaussian Blurring",
-            parameterSchema: blurFormSchemaSubject,
+            parameterSchema: blurFormSchemaSubjectBBox,
             uiSchema: blurFormSchemaSubjectUI,
             defaultValues: {
                 subjectDetection: "boundingbox",
@@ -65,10 +65,10 @@ export const hidingMethods: HidingMethods = {
                 }
             }
         },
-        blackout: {
-            name: "Blackout",
+        blackoutBBox: {
+            name: "Blackout BoundingBox",
             description: "Hiding the subject with the selected color",
-            parameterSchema: blackoutFormSchemaSubject,
+            parameterSchema: blackoutFormSchemaSubjectBBox,
             uiSchema: blackoutFormSchemaSubjectUI,
             defaultValues: {
                 subjectDetection: "boundingbox",
@@ -89,10 +89,10 @@ export const hidingMethods: HidingMethods = {
             name: "None",
             description: "Does not hide the subject in the video"
         },
-        blur: {
-            name: "Blur",
+        blurBBox: {
+            name: "Blur BoundingBox",
             description: "Gaussian Blurring",
-            parameterSchema: blurFormSchemaSubject,
+            parameterSchema: blurFormSchemaSubjectBBox,
             uiSchema: blurFormSchemaSubjectUI,
             defaultValues: {
                 subjectDetection: "silhouette",
@@ -107,10 +107,47 @@ export const hidingMethods: HidingMethods = {
                 }
             }
         },
-        blackout: {
-            name: "Blackout",
+        blurSilhouette: {
+            name: "Blur Silhouette",
+            description: "Gaussian Blurring",
+            parameterSchema: blurFormSchemaSubjectSilhouette,
+            uiSchema: blurFormSchemaSubjectUI,
+            defaultValues: {
+                subjectDetection: "boundingbox",
+                detectionModel: "yolo",
+                detectionParams: {
+                    numPoses: 1,
+                    confidence: 0.5
+                },
+                hidingParams: {
+                    kernelSize: 23,
+                    extraPixels: 0
+                }
+            }
+        },
+        blackoutBBox: {
+            name: "Blackout Bounding Box",
             description: "Hiding the subject with the selected color",
-            parameterSchema: blackoutFormSchemaSubject,
+            parameterSchema: blackoutFormSchemaSubjectBBox,
+            uiSchema: blackoutFormSchemaSubjectUI,
+            defaultValues: {
+                subjectDetection: "silhouette",
+                detectionModel: "mediapipe",
+                detectionParams: {
+                    numPoses: 1,
+                    confidence: 0.5
+                },
+                hidingParams: {
+                    color: 0,
+                    extraPixels: 0
+                }
+
+            }
+        },
+        blackoutSilhouette: {
+            name: "Blackout Silhouette",
+            description: "Hiding the subject with the selected color",
+            parameterSchema: blackoutFormSchemaSubjectSilhouette,
             uiSchema: blackoutFormSchemaSubjectUI,
             defaultValues: {
                 subjectDetection: "silhouette",

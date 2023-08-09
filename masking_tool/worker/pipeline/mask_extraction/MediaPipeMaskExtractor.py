@@ -84,20 +84,13 @@ class MediaPipeMaskExtractor(BaseMaskExtractor):
         HandLandmarker = mp.tasks.vision.HandLandmarker
         HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 
-        body_part = self.get_part_to_mask("body")
-        face_part = self.get_part_to_mask("face")
-        pose_params = None
-        if body_part:
-            pose_params = body_part["params"]
-        elif face_part and face_part["masking_method"] == "skeleton":
-            pose_params = face_part["params"]
-        if pose_params:
+        if self.target == "body":
             pose_options = PoseLandmarkerOptions(
                 base_options=BaseOptions(model_asset_path=pose_model_path),
                 running_mode=VisionRunningMode.VIDEO,
                 output_segmentation_masks=False,
-                num_poses=pose_params["numPoses"],
-                min_pose_detection_confidence=pose_params["confidence"],
+                num_poses=self.params["numPoses"],
+                min_pose_detection_confidence=self.params["confidence"],
             )
             hand_options = HandLandmarkerOptions(
                 base_options=BaseOptions(model_asset_path=hand_model_path),
@@ -106,8 +99,7 @@ class MediaPipeMaskExtractor(BaseMaskExtractor):
             self.models["pose"] = PoseLandmarker.create_from_options(pose_options)
             self.models["hand"] = HandLandmarker.create_from_options(hand_options)
 
-        if face_part and face_part["masking_method"] == "faceMesh":
-            face_params = face_part["params"]
+        if self.target == "face" or self.target == "body_face":
             FaceLandmarker = mp.tasks.vision.FaceLandmarker
             FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
             face_options = FaceLandmarkerOptions(
@@ -115,8 +107,8 @@ class MediaPipeMaskExtractor(BaseMaskExtractor):
                 running_mode=VisionRunningMode.VIDEO,
                 output_face_blendshapes=True,
                 output_facial_transformation_matrixes=True,
-                num_faces=face_params["numPoses"],
-                min_face_detection_confidence=face_params["confidence"],
+                num_faces=self.params["numPoses"],
+                min_face_detection_confidence=self.params["confidence"],
             )
             self.models["faceMesh"] = FaceLandmarker.create_from_options(face_options)
 
@@ -124,12 +116,6 @@ class MediaPipeMaskExtractor(BaseMaskExtractor):
         frame_mp = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
         pose_result = self.models["pose"].detect_for_video(frame_mp, timestamp_ms)
         return pose_result.pose_landmarks
-
-    def is_face_required(self):
-        return any(
-            part["part_name"] == "face" and part["masking_method"] == "skeleton"
-            for part in self.parts_to_mask
-        )
 
     def compute_hand_landmarks(self, frame: np.ndarray, timestamp_ms: int):
         frame_mp = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
@@ -156,9 +142,31 @@ class MediaPipeMaskExtractor(BaseMaskExtractor):
         if hand_landmark_list:
             self.hide_pose_hand_landmarks(pose_landmarks_list)
 
-        # Hide facial points from pose if face masking is none or mesh
-        if not self.is_face_required():
-            self.hide_pose_face_landmarks(pose_landmarks_list)
+        if self.get_part_to_mask("body")["save_timeseries"]:
+            self.store_ts(
+                "body", pose_landmarks_list + hand_landmark_list, timestamp_ms
+            )
+
+        # only draw an output frame, if we require an output video and do not
+        # just want to extract a 3d model
+        if not "body" in self.model_3d_only_parts:
+            output_image = np.zeros(frame.shape, dtype=np.uint8)
+            output_image = self.draw_pose_landmarks(output_image, pose_landmarks_list)
+            output_image = self.draw_hand_landmarks(output_image, hand_landmark_list)
+            return output_image
+        return
+
+    def mask_body_face(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
+        pose_landmarks_list = self.compute_pose_landmarks(frame, timestamp_ms)
+        hand_landmark_list = self.compute_hand_landmarks(frame, timestamp_ms)
+        face_landmark_list = self.compute_face_results(frame, timestamp_ms)
+
+        # Hide hand points from pose, since if already have the detailed ones
+        if hand_landmark_list:
+            self.hide_pose_hand_landmarks(pose_landmarks_list)
+
+        # Hide facial points from pose
+        self.hide_pose_face_landmarks(pose_landmarks_list)
 
         if self.get_part_to_mask("body")["save_timeseries"]:
             self.store_ts(
@@ -175,27 +183,7 @@ class MediaPipeMaskExtractor(BaseMaskExtractor):
         return
 
     def mask_face(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
-        face_part = self.get_part_to_mask("face")
-        if face_part["masking_method"] == "skeleton":
-            return self.mask_face_skeleton(frame, timestamp_ms)
-        elif face_part["masking_method"] == "faceMesh":
-            return self.mask_face_mesh(frame, timestamp_ms)
-        else:
-            raise Exception("Invalid face masking method specified")
-
-    def mask_face_skeleton(self, frame: np.ndarray, timestamp_ms: int) -> np.ndarray:
-        body_result = self.get_part_to_mask("body")
-
-        # if landmarks of body pose were already included this includes the facial points already
-        if body_result:
-            return
-
-        body_result = self.compute_pose_landmarks(frame, timestamp_ms)
-        self.hide_pose_face_landmarks(body_result)
-
-        output_image = np.zeros((frame.shape), dtype=np.uint8)
-        output_image = self.draw_pose_landmarks(output_image, body_result)
-        return output_image
+        return self.mask_face_mesh(frame, timestamp_ms)
 
     def compute_face_results(self, frame: np.ndarray, timestamp_ms: int):
         frame_mp = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
@@ -233,7 +221,6 @@ class MediaPipeMaskExtractor(BaseMaskExtractor):
                 output_image, face_landmarks_list
             )
             return output_image
-        return
 
     def store_ts(self, video_part, landmarks, timestamp_ms):
         self.timeseries[video_part] = list_positions_mp(

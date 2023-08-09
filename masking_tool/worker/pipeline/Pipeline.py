@@ -1,6 +1,5 @@
 import os
 import time
-from typing import List
 from config import (
     BLENDSHAPES_BASE_PATH,
     RESULT_BASE_PATH,
@@ -9,6 +8,8 @@ from config import (
 )
 import json
 from backend_client import BackendClient
+from pipeline.mask_extraction.DockerMaskExtractor import DockerMaskExtractor
+from pipeline.ModelFactory import ModelFactory, ModelType
 from pipeline.mask_extraction.MediaPipeMaskExtractor import MediaPipeMaskExtractor
 
 from pipeline.detection.YoloDetector import YoloDetector
@@ -22,6 +23,7 @@ from pipeline.PipelineTypes import (
     Params3D,
     PartToDetect,
     PartToMask,
+    RunParams,
 )
 from utils.video_utils import setup_video_processing
 from utils.app_utils import save_preview_image
@@ -31,12 +33,8 @@ import cv2
 
 
 class Pipeline:
-    def __init__(self, run_params: dict, backend_client: BackendClient):
+    def __init__(self, run_params: RunParams, backend_client: BackendClient):
         self.backend_client = backend_client
-
-        self.detectors = []
-        self.mask_extractors = []
-        self.docker_mask_extractors = {}
         self.ts_file_handlers = {}
 
         self.model_3d_only = False
@@ -46,107 +44,35 @@ class Pipeline:
         self.progress_message_sent_time = None
         self.progress_update_interval = 5  # in seconds
 
-        (
-            required_detectors,
-            required_maskers,
-            hiding_strategies,
-        ) = self.identify_requried_models(run_params)
         params_3d: Params3D = run_params["threeDModelCreation"]
+        video_masking_params = run_params["videoMasking"]
 
-        self.init_detectors(required_detectors)
-        self.init_maskers(required_maskers, params_3d)
-        self.hider = Hider(hiding_strategies)
-
-    def identify_requried_models(self, run_params: dict):
-        # extract arguments from request and create initialization arguments for maskers, detectors and hider
-        hiding_strategies: HidingStategies = {}
-        required_detectors = {}
-        required_maskers = {}
-
-        vid_masking_params = run_params["videoMasking"]
-        print(vid_masking_params)
-        for video_part in vid_masking_params:
-            video_part_params = vid_masking_params[video_part]
-            if (
-                "hidingStrategy" in video_part_params
-                and video_part_params["hidingStrategy"]["key"] != "none"
-            ):
-                hiding_settings = video_part_params["hidingStrategy"]["params"]
-                hiding_params = hiding_settings["hidingParams"]
-                hiding_strategies[video_part] = {
-                    "key": video_part_params["hidingStrategy"]["key"],
-                    "params": hiding_params,
-                }
-                if (
-                    "detectionModel" not in hiding_settings
-                    or "subjectDetection" not in hiding_settings
-                ):
-                    raise Exception(
-                        f"Detection Model/Detection Type not specified for hiding of {video_part}"
-                    )
-                detection_model_name = hiding_settings["detectionModel"]
-                detection_type = hiding_settings["subjectDetection"]
-                detection_params = hiding_settings["detectionParams"]
-
-                if not detection_model_name in required_detectors:
-                    required_detectors[detection_model_name] = []
-
-                part_to_detect: PartToDetect = {
-                    "part_name": video_part,
-                    "detection_type": detection_type,
-                    "detection_params": detection_params,
-                }
-                required_detectors[detection_model_name].append(part_to_detect)
-
-            if "maskingStrategy" in video_part_params:
-                if (
-                    "maskingStrategy" in video_part_params
-                    and video_part_params["maskingStrategy"]["key"] != "none"
-                ):
-                    masking_method = video_part_params["maskingStrategy"]["key"]
-                    masking_params = video_part_params["maskingStrategy"]["params"]
-                    masking_model_name = masking_params["maskingModel"]
-                    save_timeseries = masking_params["timeseries"]
-
-                    if not masking_model_name in required_maskers:
-                        required_maskers[masking_model_name] = []
-
-                    part_to_mask: List[PartToMask] = {
-                        "part_name": video_part,
-                        "masking_method": masking_method,
-                        "params": masking_params,
-                        "save_timeseries": save_timeseries,
-                    }
-                    required_maskers[masking_model_name].append(part_to_mask)
-        return required_detectors, required_maskers, hiding_strategies
-
-    def init_detectors(self, required_detectors: dict):
-        if "mediapipe" in required_detectors:
-            parts_to_detect = required_detectors["mediapipe"]
-            self.detectors.append(MediaPipeDetector(parts_to_detect))
-        if "yolo" in required_detectors:
-            parts_to_detect = required_detectors["yolo"]
-            self.detectors.append(YoloDetector(parts_to_detect))
-
-    def init_maskers(self, required_maskers: dict, params_3d: Params3D):
-        if not required_maskers and not self.detectors:
-            self.model_3d_only = True
-        if (
-            "mediapipe" in required_maskers
-            or params_3d["blendshapes"]
-            or params_3d["skeleton"]
-        ):
-            if "mediapipe" in required_maskers:
-                parts_to_mask = required_maskers["mediapipe"]
-            else:
-                parts_to_mask = []
-            self.mask_extractors.append(
-                MediaPipeMaskExtractor(parts_to_mask, params_3d)
+        model_factory = ModelFactory()
+        target_detection_model = video_masking_params.hiding_strategy_target.params[
+            "detection_model"
+        ]
+        target_detection_params = video_masking_params.hiding_strategy_target.params[
+            "detection_params"
+        ]
+        target_detection_params["target"] = video_masking_params.hiding_target
+        self.detector_target = model_factory.make_model(
+            target_detection_model, ModelType.DETECTION, target_detection_params
+        )
+        if not self.detector_target.target == "body":
+            self.detector_bg = model_factory.make_model(
+                target_detection_model, ModelType.DETECTION, target_detection_params
             )
+        else:
+            self.detector_bg = None
 
-        for masker in required_maskers:
-            if masker in known_docker_mask_extractors:
-                self.docker_mask_extractors[masker] = required_maskers[masker]
+        self.mask_extractor = model_factory.make_model(
+            video_masking_params.masking_strategy.key,
+            ModelType.MASKING,
+            video_masking_params.masking_strategy.params,
+        )
+
+        self.hider_target = Hider(run_params.video_masking.hiding_strategy_target)
+        self.hider_bg = Hider(run_params.video_masking.hiding_strategy_background)
 
     def init_ts_file_handlers(self, video_id: str):
         for mask_extractor in self.mask_extractors:
@@ -211,11 +137,10 @@ class Pipeline:
         video_in_path = os.path.join(VIDEOS_BASE_PATH, video_id + ".mp4")
         video_out_path = os.path.join(RESULT_BASE_PATH, video_id + ".mp4")
 
-        if self.docker_mask_extractors:
-            for mask_extractor in self.docker_mask_extractors:
-                self.backend_client.create_job(
-                    mask_extractor, video_id, {"arg1": "someVal"}
-                )
+        if isinstance(self.mask_extractor, DockerMaskExtractor):
+            self.backend_client.create_job(
+                self.mask_extractor.model_name, video_id, {"arg1": "someVal"}
+            )
 
         video_cap, out = setup_video_processing(video_in_path, video_out_path)
         is_first_frame = True
@@ -238,38 +163,42 @@ class Pipeline:
             if not is_first_frame and frame_timestamp_ms == 0:
                 continue
 
-            # Detect all relevant body/video parts (as pixelMasks)
-            detection_results: List[DetectionResult] = []
-            for detector in self.detectors:
-                detection_result = detector.detect(frame, frame_timestamp_ms)
-
-                detection_results.extend(detection_result)
+            # Detect all targets / background (as pixel masks)
+            if self.detector_target:
+                detection_result_target = self.detector_target.detect_target(
+                    frame, frame_timestamp_ms
+                )
+            if self.detector_target.target == "body":
+                detection_result_bg = 1 - detection_result_target
+            else:
+                detection_result_bg = 1 - self.detector_bg.detect_target(
+                    frame, frame_timestamp_ms
+                )
 
             # applies the hiding method on each detected part of the frame and combines them into one frame
             hidden_frame = frame.copy()
-            for detection_result in detection_results:
-                hidden_frame = self.hider.hide_frame_part(
-                    hidden_frame, detection_result
-                )
+            hidden_frame = self.hider_bg.hide(hidden_frame, detection_result_bg["mask"])
+            hidden_frame = self.hider_target.hide(
+                hidden_frame, detection_result_target["mask"]
+            )
 
             # Extracts the masks for each desired bodypart
-            mask_results = []
-
-            for mask_extractor in self.mask_extractors:
-                masking_results: List[MaskingResult] = mask_extractor.extract_mask(
+            if self.mask_extractor and not isinstance(
+                self.mask_extractor, DockerMaskExtractor
+            ):
+                masking_result: MaskingResult = self.mask_extractor.extract_mask(
                     frame, frame_timestamp_ms
                 )
-                mask_results.extend([result["mask"] for result in masking_results])
                 self.write_timeseries(
-                    mask_extractor.get_newest_timeseries(), is_first_frame
+                    self.mask_extractor.get_newest_timeseries(), is_first_frame
                 )
                 self.write_blendshapes(
-                    mask_extractor.get_newest_blendshapes(), is_first_frame
+                    self.mask_extractor.get_newest_blendshapes(), is_first_frame
                 )
 
-            if not self.model_3d_only:
-                out_frame = overlay_frames(hidden_frame, mask_results)
-                out.write(out_frame)
+                if not self.model_3d_only:
+                    out_frame = overlay_frames(hidden_frame, [masking_result["mask"]])
+                    out.write(out_frame)
 
             is_first_frame = False
             self.send_progress_update(job_id, index)

@@ -1,30 +1,22 @@
 import numpy as np
 import cv2
 
-from pipeline.PipelineTypes import DetectionResult, HidingStategies, HidingStrategy
+from pipeline.PipelineTypes import (
+    Strategy,
+)
 
 
 class Hider:
-    def __init__(self, hiding_strategies):
-        self.hiding_strategies: HidingStategies = hiding_strategies
+    def __init__(self, hiding_strategy: Strategy):
+        self.hiding_strategy = hiding_strategy
 
-    def hide_frame_part(
-        self, base_image: np.ndarray, detection_result: DetectionResult
-    ) -> np.ndarray:
-        hiding_strategy = self.hiding_strategies[detection_result["part_name"]]
-        if hiding_strategy["key"] == "blur":
-            result = self.hide_blur(
-                base_image, detection_result["mask"], hiding_strategy["params"]
-            )
-        elif hiding_strategy["key"] == "blackout":
-            result = self.hide_blackout(
-                base_image, detection_result["mask"], hiding_strategy["params"]
-            )
+    def hide(self, base_image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        if self.hiding_strategy.key == "blur":
+            return self.hide_blur(base_image, mask, self.hiding_strategy.params)
+        elif self.hiding_strategy.key == "blackout":
+            return self.hide_blackout(base_image, mask, self.hiding_strategy.params)
         else:
-            raise Exception(
-                f"Invalid hiding strategy specified for {detection_result['part_name']}"
-            )
-        return result
+            raise Exception("Invalid hiding strategy")
 
     def hide_blur(
         self, base_image: np.ndarray, mask: np.ndarray, params: dict
