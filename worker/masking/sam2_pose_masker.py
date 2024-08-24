@@ -3,6 +3,7 @@ import numpy as np
 import supervision as sv
 import os
 import shutil
+import mediapipe
 
 from typing import Callable
 from communication.sam2_client import Sam2Client
@@ -372,6 +373,155 @@ class Sam2PoseMasker:
     def _compute_mask_anyone_holistic_data(self, content, sub_video_path):
         openpose_data = self._openpose_client.estimate_pose_on_video(content, { 'face': True })
 
+        video_capture = cv2.VideoCapture(sub_video_path)
+        frame_width = video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+        frame_height = video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+
+        # Hands may overlap, so we'll try to estimate multiple and choose the best fitting one
+        landmarker = self._media_pipe_landmarker.configure_hand_landmarker('image', 4)
+
+        sub_video_frame_idx = 0
+        while video_capture.isOpened():
+            ret, frame = video_capture.read()
+            if not ret:
+                break
+
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            keypoint_data = openpose_data[sub_video_frame_idx]
+            pose_keypoints = keypoint_data['pose_keypoints']
+
+            if pose_keypoints is None:
+                print("Skip1")
+                # @todo
+                continue
+
+            left_elbow_keypoint = pose_keypoints[6]
+            left_wrist_keypoint = pose_keypoints[7]
+            right_elbow_keypoint = pose_keypoints[3]
+            right_wrist_keypoint = pose_keypoints[4]
+
+            left_valid = left_elbow_keypoint is not None and left_wrist_keypoint is not None and \
+                         (left_elbow_keypoint[0] > 0 and left_elbow_keypoint[1] > 0) and \
+                         (left_wrist_keypoint[0] > 0 and left_wrist_keypoint[1] > 0)
+
+            right_valid = right_elbow_keypoint is not None and right_wrist_keypoint is not None and \
+                         (right_elbow_keypoint[0] > 0 and right_elbow_keypoint[1] > 0) and \
+                         (right_wrist_keypoint[0] > 0 and right_wrist_keypoint[1] > 0)
+
+            if not left_valid and not right_valid:
+                print("Skip2")
+                # @todo
+                continue
+
+            box_size = 0.15 * (frame_width + frame_height)
+
+            if left_valid:
+                vector_left = (left_wrist_keypoint[0] - left_elbow_keypoint[0], left_wrist_keypoint[1] - left_elbow_keypoint[1])
+                hand_offset_left = (vector_left[0] * (1 / 3), vector_left[1] * (1 / 3))
+                left_hand_position_estimate = (left_wrist_keypoint[0] + hand_offset_left[0], left_wrist_keypoint[1] + hand_offset_left[1])
+                l_bbox = self._calculate_mask_anyone_holistic_hand_bbox(left_hand_position_estimate, box_size, frame_width, frame_height)
+
+                cropped_frame = frame[l_bbox[1]:l_bbox[3], l_bbox[0]:l_bbox[2]]
+                cropped_frame = cropped_frame.astype(np.uint8)
+
+                mp_image = mediapipe.Image(image_format=mediapipe.ImageFormat.SRGB, data=cropped_frame)
+                hands = landmarker.detect(mp_image)
+
+                if len(hands.hand_landmarks) > 0:
+                    best_fitting_hand = None
+                    min_distance_squared = float('inf')
+
+                    for potential_hand in hands.hand_landmarks:
+                        adjusted_keypoints = [(keypoint.x * (l_bbox[2] - l_bbox[0]) + l_bbox[0], keypoint.y * (l_bbox[3] - l_bbox[1]) + l_bbox[1])
+                                              if (keypoint.x > 0 and keypoint.y > 0) else None
+                                              for keypoint in potential_hand]
+
+                        reference_keypoints = [
+                            adjusted_keypoints[0],  # wrist_keypoint
+                            adjusted_keypoints[1],  # thumb_cmc_keypoint
+                            adjusted_keypoints[5],  # index_finger_mcp_keypoint
+                            adjusted_keypoints[9],  # middle_finger_mcp_keypoint
+                            adjusted_keypoints[13],  # ring_finger_mcp_keypoint
+                            adjusted_keypoints[17]  # pinky_finger_mcp_keypoint
+                        ]
+
+                        reference_keypoint = None
+                        for keypoint in reference_keypoints:
+                            if keypoint is not None:
+                                reference_keypoint = keypoint
+                                break
+
+                        # If no valid keypoint is found, continue the loop
+                        if reference_keypoint is None:
+                            continue
+
+                        distance_squared = (reference_keypoint[0] - left_hand_position_estimate[0]) ** 2 + \
+                                           (reference_keypoint[1] - left_hand_position_estimate[1]) ** 2
+
+                        if distance_squared < min_distance_squared:
+                            min_distance_squared = distance_squared
+                            best_fitting_hand = adjusted_keypoints
+
+                    if best_fitting_hand is not None:
+                        openpose_data[sub_video_frame_idx]['left_hand_keypoints'] = best_fitting_hand
+
+            if right_valid:
+                vector_right = (right_wrist_keypoint[0] - right_elbow_keypoint[0], right_wrist_keypoint[1] - right_elbow_keypoint[1])
+                hand_offset_right = (vector_right[0] * (1 / 3), vector_right[1] * (1 / 3))
+                right_hand_position_estimate = (right_wrist_keypoint[0] + hand_offset_right[0], right_wrist_keypoint[1] + hand_offset_right[1])
+                r_bbox = self._calculate_mask_anyone_holistic_hand_bbox(right_hand_position_estimate, box_size, frame_width, frame_height)
+
+                cropped_frame = frame[r_bbox[1]:r_bbox[3], r_bbox[0]:r_bbox[2]]
+                cropped_frame = cropped_frame.astype(np.uint8)
+
+                mp_image = mediapipe.Image(image_format=mediapipe.ImageFormat.SRGB, data=cropped_frame)
+                hands = landmarker.detect(mp_image)
+
+                if len(hands.hand_landmarks) > 0:
+                    best_fitting_hand = None
+                    min_distance_squared = float('inf')
+
+                    for potential_hand in hands.hand_landmarks:
+                        adjusted_keypoints = [(keypoint.x * (r_bbox[2] - r_bbox[0]) + r_bbox[0], keypoint.y * (r_bbox[3] - r_bbox[1]) + r_bbox[1])
+                                              if (keypoint.x > 0 and keypoint.y > 0) else None
+                                              for keypoint in potential_hand]
+
+                        reference_keypoints = [
+                            adjusted_keypoints[0],  # wrist_keypoint
+                            adjusted_keypoints[1],  # thumb_cmc_keypoint
+                            adjusted_keypoints[5],  # index_finger_mcp_keypoint
+                            adjusted_keypoints[9],  # middle_finger_mcp_keypoint
+                            adjusted_keypoints[13],  # ring_finger_mcp_keypoint
+                            adjusted_keypoints[17]  # pinky_finger_mcp_keypoint
+                        ]
+
+                        reference_keypoint = None
+                        for keypoint in reference_keypoints:
+                            if keypoint is not None:
+                                reference_keypoint = keypoint
+                                break
+
+                        # If no valid keypoint is found, continue the loop
+                        if reference_keypoint is None:
+                            continue
+
+                        distance_squared = (reference_keypoint[0] - right_hand_position_estimate[0]) ** 2 + \
+                                           (reference_keypoint[1] - right_hand_position_estimate[1]) ** 2
+
+                        if distance_squared < min_distance_squared:
+                            min_distance_squared = distance_squared
+                            best_fitting_hand = adjusted_keypoints
+
+                    if best_fitting_hand is not None:
+                        openpose_data[sub_video_frame_idx]['right_hand_keypoints'] = best_fitting_hand
+
+            sub_video_frame_idx += 1
+
+        video_capture.release()
+        return openpose_data
+
+
         left_min_x, left_min_y = float('inf'), float('inf')
         left_max_x, left_max_y = float('-inf'), float('-inf')
 
@@ -458,13 +608,13 @@ class Sam2PoseMasker:
         video_capture.release()
 
         if left_bounding_box_valid:
-            left_hands = self._media_pipe_landmarker.compute_hand_data(left_output_path, 1)
+            left_hands = self._media_pipe_landmarker.compute_hand_data(left_output_path)
             left_hands = [((keypoint.x * (left_max_x - left_min_x) + left_min_x, keypoint.y * (left_max_y - left_min_y) + left_min_y) for keypoint in hand if keypoint is not None and (keypoint.x > 0 or keypoint.y > 0)) for hand in left_hands if hand is not None]
         else:
             left_hands = [None] * len(openpose_data)
 
         if right_bounding_box_valid:
-            right_hands = self._media_pipe_landmarker.compute_hand_data(right_output_path, 1)
+            right_hands = self._media_pipe_landmarker.compute_hand_data(right_output_path)
             right_hands = [((keypoint.x * (right_max_x - right_min_x) + right_min_x, keypoint.y * (right_max_y - right_min_y) + right_min_y) for keypoint in hand if keypoint is not None and (keypoint.x > 0 or keypoint.y > 0)) for hand in right_hands if hand is not None]
         else:
             right_hands = [None] * len(openpose_data)
@@ -485,6 +635,22 @@ class Sam2PoseMasker:
             openpose_data[i]['right_hand_keypoints'] = right_hands[i] if right_bounding_box_valid and right_hands[i] is not None else None
 
         return openpose_data
+
+    def _calculate_mask_anyone_holistic_hand_bbox(self, hand_position, box_size, frame_width, frame_height):
+        # Calculate the top-left corner
+        top_left_x = hand_position[0] - box_size / 2
+        top_left_y = hand_position[1] - box_size / 2
+
+        # Ensure the bounding box doesn't exceed the frame boundaries
+        top_left_x = round(max(0, min(top_left_x, frame_width - box_size)))
+        top_left_y = round(max(0, min(top_left_y, frame_height - box_size)))
+
+        # Calculate the bottom-right corner
+        bottom_right_x = round(top_left_x + box_size)
+        bottom_right_y = round(top_left_y + box_size)
+
+        # Return the bounding box as (top_left_x, top_left_y, bottom_right_x, bottom_right_y)
+        return (top_left_x, top_left_y, bottom_right_x, bottom_right_y)
 
 
     def _compute_mp_pose_data(self, sub_video_path):

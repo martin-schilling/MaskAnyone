@@ -255,19 +255,19 @@ class PosePostprocessor:
             if current_pose['left_hand_keypoints'] is not None:
                 adjusted_pose['left_hand_keypoints'] = []
                 for keypoint in current_pose['left_hand_keypoints']:
-                    if keypoint is not None and (keypoint.x > 0 or keypoint.y > 0):
+                    if keypoint is not None and (keypoint[0] > 0 or keypoint[1] > 0):
                         adjusted_keypoint = (keypoint[0] + xmin, keypoint[1] + ymin)
                         adjusted_pose['left_hand_keypoints'].append(adjusted_keypoint)
                     else:
-                        adjusted_pose['left_hand_keypoints'].append(None)
+                        adjusted_pose['left_hand_keypoints'].append([0, 0])
 
             if current_pose['right_hand_keypoints'] is not None:
                 adjusted_pose['right_hand_keypoints'] = []
                 for keypoint in current_pose['right_hand_keypoints']:
-                    if keypoint is not None and (keypoint.x > 0 or keypoint.y > 0):
+                    if keypoint is not None and (keypoint[0] > 0 or keypoint[1]> 0):
                         adjusted_keypoint = (keypoint[0] + xmin, keypoint[1] + ymin)
                         adjusted_pose['right_hand_keypoints'].append(adjusted_keypoint)
                     else:
-                        adjusted_pose['right_hand_keypoints'].append(None)
+                        adjusted_pose['right_hand_keypoints'].append([0, 0])
 
             pose_data_dict[obj_id][idx] = adjusted_pose

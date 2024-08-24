@@ -283,8 +283,8 @@ class PoseRenderer:
         if left_hand_keypoints is not None:
             hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
             hand_landmarks_proto.landmark.extend([
-                landmark_pb2.NormalizedLandmark(x=landmark[0] / image_width, y=landmark[1] / image_height, z=0.5) for
-                landmark in left_hand_keypoints
+                landmark_pb2.NormalizedLandmark(x=landmark[0] / image_width, y=landmark[1] / image_height, z=0.5)
+                for landmark in left_hand_keypoints
             ])
             solutions.drawing_utils.draw_landmarks(
                 rgb_image,
@@ -296,8 +296,8 @@ class PoseRenderer:
         if right_hand_keypoints is not None:
             hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
             hand_landmarks_proto.landmark.extend([
-                landmark_pb2.NormalizedLandmark(x=landmark[0] / image_width, y=landmark[1] / image_height, z=0.5) for
-                landmark in right_hand_keypoints
+                landmark_pb2.NormalizedLandmark(x=landmark[0] / image_width, y=landmark[1] / image_height, z=0.5)
+                for landmark in right_hand_keypoints
             ])
             solutions.drawing_utils.draw_landmarks(
                 rgb_image,
